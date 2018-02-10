@@ -18,7 +18,7 @@
 
 /* Example filter sizes */
 #define DATA_LEN  512*512*256
-#define FILTER_LEN  512
+#define FILTER_LEN  1024
 
 
 /* Subtract the `struct timeval' values X and Y,
@@ -48,10 +48,11 @@ int timeval_subtract (struct timeval * result, struct timeval * x, struct timeva
 }
 
 /* Function to apply the filter with the filter list in the outside loop */
-void serialFilterFirst ( int data_len, unsigned int* input_array, unsigned int* output_array, int filter_len, unsigned int* filter_list )
+double serialFilterFirst ( int data_len, unsigned int* input_array, unsigned int* output_array, int filter_len, unsigned int* filter_list )
 {
   /* Variables for timing */
   struct timeval ta, tb, tresult;
+  double dt;
 
   /* get initial time */
   gettimeofday ( &ta, NULL );
@@ -72,16 +73,19 @@ void serialFilterFirst ( int data_len, unsigned int* input_array, unsigned int* 
   gettimeofday ( &tb, NULL );
 
   timeval_subtract ( &tresult, &tb, &ta );
+  dt = tresult.tv_sec + tresult.tv_usec / 1000000.0;
 
   printf ("Serial filter first took %lu seconds and %lu microseconds.  Filter length = %d\n", tresult.tv_sec, tresult.tv_usec, filter_len );
+  return dt;
 }
 
 
 /* Function to apply the filter with the filter list in the outside loop */
-void serialDataFirst ( int data_len, unsigned int* input_array, unsigned int* output_array, int filter_len, unsigned int* filter_list )
+double serialDataFirst ( int data_len, unsigned int* input_array, unsigned int* output_array, int filter_len, unsigned int* filter_list )
 {
   /* Variables for timing */
   struct timeval ta, tb, tresult;
+  double dt;
 
   /* get initial time */
   gettimeofday ( &ta, NULL );
@@ -102,15 +106,18 @@ void serialDataFirst ( int data_len, unsigned int* input_array, unsigned int* ou
   gettimeofday ( &tb, NULL );
 
   timeval_subtract ( &tresult, &tb, &ta );
+  dt = tresult.tv_sec + tresult.tv_usec / 1000000.0;  
 
   printf ("Serial data first took %lu seconds and %lu microseconds.  Filter length = %d\n", tresult.tv_sec, tresult.tv_usec, filter_len );
+  return dt;
 }
 
 /* Function to apply the filter with the filter list in the outside loop */
-void parallelFilterFirst ( int data_len, unsigned int* input_array, unsigned int* output_array, int filter_len, unsigned int* filter_list )
+double parallelFilterFirst ( int data_len, unsigned int* input_array, unsigned int* output_array, int filter_len, unsigned int* filter_list )
 {
   /* Variables for timing */
   struct timeval ta, tb, tresult;
+  double dt;
 
   /* get initial time */
   gettimeofday ( &ta, NULL );
@@ -132,17 +139,19 @@ void parallelFilterFirst ( int data_len, unsigned int* input_array, unsigned int
   gettimeofday ( &tb, NULL );
 
   timeval_subtract ( &tresult, &tb, &ta );
+  dt = tresult.tv_sec + tresult.tv_usec / 1000000.0;  
 
   printf ("Parallel filter first took %lu seconds and %lu microseconds.  Filter length = %d\n", tresult.tv_sec, tresult.tv_usec, filter_len );
-  return;
+  return dt;
 }
 
 
 /* Function to apply the filter with the filter list in the outside loop */
-void parallelDataFirst ( int data_len, unsigned int* input_array, unsigned int* output_array, int filter_len, unsigned int* filter_list )
+double parallelDataFirst ( int data_len, unsigned int* input_array, unsigned int* output_array, int filter_len, unsigned int* filter_list )
 {
     /* Variables for timing */
   struct timeval ta, tb, tresult;
+  double dt;
 
   /* get initial time */
   gettimeofday ( &ta, NULL );
@@ -164,9 +173,10 @@ void parallelDataFirst ( int data_len, unsigned int* input_array, unsigned int* 
   gettimeofday ( &tb, NULL );
 
   timeval_subtract ( &tresult, &tb, &ta );
+  dt = tresult.tv_sec + tresult.tv_usec / 1000000.0;  
 
   printf ("Parallel data first took %lu seconds and %lu microseconds.  Filter length = %d\n", tresult.tv_sec, tresult.tv_usec, filter_len );
-  return;
+  return dt;
 }
 
 
@@ -187,6 +197,8 @@ int main( int argc, char** argv )
 {
   /* loop variables */
   int x,y;
+  double dt;
+  FILE *fp1, *fp2, *fp3, *fp4;
 
   /* Create matrixes */
   unsigned int * input_array;
@@ -215,23 +227,61 @@ int main( int argc, char** argv )
     filter_list[y] = y;
   }
 
-  /* Execute at a variety of filter lengths */
-  for ( int filter_len =16; filter_len<=FILTER_LEN; filter_len*=2) 
-  {
-    serialDataFirst ( DATA_LEN, input_array, serial_array, filter_len, filter_list );
-    memset ( output_array, 0, DATA_LEN );
+  /* open file for saving data */
+  fp1 = fopen("loop_efficiency.txt","w+");
+  fp2 = fopen("loop_parallel.txt","w+");
+  fprintf(fp1,"filter_len,\
+               data_1,data_1_norm,\
+               filter_1,filter_1_norm\n");
+  fprintf(fp2,"num_threads,\
+               pdata_1st,\
+               pfilter_1st\n");
 
-    serialFilterFirst ( DATA_LEN, input_array, output_array, filter_len, filter_list );
-    checkData ( serial_array, output_array );
-    memset ( output_array, 0, DATA_LEN );
+  // /* Execute at a variety of filter lengths */
+  // /* Loop Efficiency */
+  // for ( int filter_len =1; filter_len<=FILTER_LEN; filter_len*=2) 
+  // {
+  //   fprintf(fp1, "%d,", filter_len);
 
-    parallelFilterFirst ( DATA_LEN, input_array, output_array, filter_len, filter_list );
-    checkData ( serial_array, output_array );
-    memset ( output_array, 0, DATA_LEN );
+  //   dt = serialDataFirst ( DATA_LEN, input_array, serial_array, filter_len, filter_list );
+  //   fprintf(fp1, "%f,", dt);
+  //   fprintf(fp1, "%f,", dt / filter_len);
+  //   memset ( output_array, 0, DATA_LEN );
 
-    parallelDataFirst ( DATA_LEN, input_array, output_array, filter_len, filter_list );
-    checkData ( serial_array, output_array );
-    memset ( output_array, 0, DATA_LEN );
+  //   dt = serialFilterFirst ( DATA_LEN, input_array, output_array, filter_len, filter_list );
+  //   checkData ( serial_array, output_array );
+  //   fprintf(fp1, "%f,", dt);
+  //   fprintf(fp1, "%f\n", dt / filter_len);
+  //   memset ( output_array, 0, DATA_LEN );
+  // }
+
+  /* Loop Parallelism */
+  int fs = 512;
+  serialDataFirst ( DATA_LEN, input_array, serial_array, fs, filter_list );
+  for(int num_threads =1; num_threads<=16; num_threads*=2){
+    omp_set_dynamic(0);
+    omp_set_num_threads(num_threads);
+
+    fprintf(fp2,"%d,",num_threads);
+    
+    dt=0;
+    for(int it=0; it<5; it++){
+      dt += parallelFilterFirst ( DATA_LEN, input_array, output_array, fs, filter_list );
+      checkData ( serial_array, output_array );
+      memset ( output_array, 0, DATA_LEN );
+    }
+    fprintf(fp2,"%f,",dt/5);
+
+    dt=0;
+    for(int it=0; it<5; it++){
+      dt += parallelDataFirst ( DATA_LEN, input_array, output_array, fs, filter_list );
+      checkData ( serial_array, output_array );
+      memset ( output_array, 0, DATA_LEN );
+    }
+    fprintf(fp2,"%f\n",dt/5);    
   }
+
+  fclose(fp1);
+  fclose(fp2);
 }
 
