@@ -18,7 +18,7 @@
 
 /* Example filter sizes */
 #define DATA_LEN  512*512*256
-#define FILTER_LEN  1024
+#define FILTER_LEN  128
 
 
 /* Subtract the `struct timeval' values X and Y,
@@ -112,7 +112,7 @@ double serialDataFirst ( int data_len, unsigned int* input_array, unsigned int* 
   return dt;
 }
 
-/* Function to apply the filter with the filter list in the outside loop */
+
 double parallelFilterFirst ( int data_len, unsigned int* input_array, unsigned int* output_array, int filter_len, unsigned int* filter_list )
 {
   /* Variables for timing */
@@ -145,8 +145,6 @@ double parallelFilterFirst ( int data_len, unsigned int* input_array, unsigned i
   return dt;
 }
 
-
-/* Function to apply the filter with the filter list in the outside loop */
 double parallelDataFirst ( int data_len, unsigned int* input_array, unsigned int* output_array, int filter_len, unsigned int* filter_list )
 {
     /* Variables for timing */
@@ -179,6 +177,262 @@ double parallelDataFirst ( int data_len, unsigned int* input_array, unsigned int
   return dt;
 }
 
+double DynamicFilter1st ( int data_len, unsigned int* input_array, unsigned int* output_array, int filter_len, unsigned int* filter_list )
+{
+  /* Variables for timing */
+  struct timeval ta, tb, tresult;
+  double dt;
+
+  /* get initial time */
+  gettimeofday ( &ta, NULL );
+
+  /* for all elements in the filter */
+  #pragma omp parallel for schedule(dynamic) num_threads(16)
+  for (int y=0; y<filter_len; y++) { 
+    /* for all elements in the data */
+    for (int x=0; x<data_len; x++) {
+      /* it the data element matches the filter */ 
+      if (input_array[x] == filter_list[y]) {
+        /* include it in the output */
+        output_array[x] = input_array[x];
+      }
+    }
+  }
+
+  /* get initial time */
+  gettimeofday ( &tb, NULL );
+
+  timeval_subtract ( &tresult, &tb, &ta );
+  dt = tresult.tv_sec + tresult.tv_usec / 1000000.0;  
+
+  printf ("Parallel filter first took %lu seconds and %lu microseconds.  Filter length = %d\n", tresult.tv_sec, tresult.tv_usec, filter_len );
+  return dt;
+}
+
+double DynamicData1st ( int data_len, unsigned int* input_array, unsigned int* output_array, int filter_len, unsigned int* filter_list )
+{
+    /* Variables for timing */
+  struct timeval ta, tb, tresult;
+  double dt;
+
+  /* get initial time */
+  gettimeofday ( &ta, NULL );
+
+  /* for all elements in the data */
+  #pragma omp parallel for schedule(dynamic) num_threads(16)
+  for (int x=0; x<data_len; x++) {
+    /* for all elements in the filter */ 
+    for (int y=0; y<filter_len; y++) { 
+      /* it the data element matches the filter */ 
+      if (input_array[x] == filter_list[y]) {
+        /* include it in the output */
+        output_array[x] = input_array[x];
+      }
+    }
+  }
+
+  /* get initial time */
+  gettimeofday ( &tb, NULL );
+
+  timeval_subtract ( &tresult, &tb, &ta );
+  dt = tresult.tv_sec + tresult.tv_usec / 1000000.0;  
+
+  printf ("Parallel data first took %lu seconds and %lu microseconds.  Filter length = %d\n", tresult.tv_sec, tresult.tv_usec, filter_len );
+  return dt;
+}
+
+double StaticFilter1st ( int data_len, unsigned int* input_array, unsigned int* output_array, int filter_len, unsigned int* filter_list )
+{
+  /* Variables for timing */
+  struct timeval ta, tb, tresult;
+  double dt;
+
+  /* get initial time */
+  gettimeofday ( &ta, NULL );
+
+  /* for all elements in the filter */
+  #pragma omp parallel for schedule(static,512) num_threads(16)
+  for (int y=0; y<filter_len; y++) { 
+    /* for all elements in the data */
+    for (int x=0; x<data_len; x++) {
+      /* it the data element matches the filter */ 
+      if (input_array[x] == filter_list[y]) {
+        /* include it in the output */
+        output_array[x] = input_array[x];
+      }
+    }
+  }
+
+  /* get initial time */
+  gettimeofday ( &tb, NULL );
+
+  timeval_subtract ( &tresult, &tb, &ta );
+  dt = tresult.tv_sec + tresult.tv_usec / 1000000.0;  
+
+  printf ("Parallel filter first took %lu seconds and %lu microseconds.  Filter length = %d\n", tresult.tv_sec, tresult.tv_usec, filter_len );
+  return dt;
+}
+
+double StaticData1st ( int data_len, unsigned int* input_array, unsigned int* output_array, int filter_len, unsigned int* filter_list )
+{
+    /* Variables for timing */
+  struct timeval ta, tb, tresult;
+  double dt;
+
+  /* get initial time */
+  gettimeofday ( &ta, NULL );
+
+  /* for all elements in the data */
+  #pragma omp parallel for schedule(static,512) num_threads(16)
+  for (int x=0; x<data_len; x++) {
+    /* for all elements in the filter */ 
+    for (int y=0; y<filter_len; y++) { 
+      /* it the data element matches the filter */ 
+      if (input_array[x] == filter_list[y]) {
+        /* include it in the output */
+        output_array[x] = input_array[x];
+      }
+    }
+  }
+
+  /* get initial time */
+  gettimeofday ( &tb, NULL );
+
+  timeval_subtract ( &tresult, &tb, &ta );
+  dt = tresult.tv_sec + tresult.tv_usec / 1000000.0;  
+
+  printf ("Parallel data first took %lu seconds and %lu microseconds.  Filter length = %d\n", tresult.tv_sec, tresult.tv_usec, filter_len );
+  return dt;
+}
+
+double LUFilter1st ( int data_len, unsigned int* input_array, unsigned int* output_array, int filter_len, unsigned int* filter_list )
+{
+  /* Variables for timing */
+  struct timeval ta, tb, tresult;
+  double dt;
+
+  /* get initial time */
+  gettimeofday ( &ta, NULL );
+
+  /* for all elements in the filter */
+  #pragma omp parallel for
+  for (int y=0; y<filter_len; y+=4) { 
+    for (int x=0; x<data_len; x+=4) {
+      if (input_array[x] == filter_list[y])
+        output_array[x] = input_array[x];
+      if (input_array[x+1] == filter_list[y])
+        output_array[x+1] = input_array[x+1];
+      if (input_array[x+2] == filter_list[y])
+        output_array[x+2] = input_array[x+2];
+      if (input_array[x+3] == filter_list[y])
+        output_array[x+3] = input_array[x+3];
+    }
+    for (int x=0; x<data_len; x+=4) {
+      if (input_array[x] == filter_list[y+1])
+        output_array[x] = input_array[x];
+      if (input_array[x+1] == filter_list[y+1])
+        output_array[x+1] = input_array[x+1];
+      if (input_array[x+2] == filter_list[y+1])
+        output_array[x+2] = input_array[x+2];
+      if (input_array[x+3] == filter_list[y+1])
+        output_array[x+3] = input_array[x+3];
+    }
+    for (int x=0; x<data_len; x+=4) {
+      if (input_array[x] == filter_list[y+2])
+        output_array[x] = input_array[x];
+      if (input_array[x+1] == filter_list[y+2])
+        output_array[x+1] = input_array[x+1];
+      if (input_array[x+2] == filter_list[y+2])
+        output_array[x+2] = input_array[x+2];
+      if (input_array[x+3] == filter_list[y+2])
+        output_array[x+3] = input_array[x+3];
+    }
+    for (int x=0; x<data_len; x+=4) {
+      if (input_array[x] == filter_list[y+3])
+        output_array[x] = input_array[x];
+      if (input_array[x+1] == filter_list[y+3])
+        output_array[x+1] = input_array[x+1];
+      if (input_array[x+2] == filter_list[y+3])
+        output_array[x+2] = input_array[x+2];
+      if (input_array[x+3] == filter_list[y+3])
+        output_array[x+3] = input_array[x+3];
+    }
+  }
+
+  /* get initial time */
+  gettimeofday ( &tb, NULL );
+
+  timeval_subtract ( &tresult, &tb, &ta );
+  dt = tresult.tv_sec + tresult.tv_usec / 1000000.0;  
+
+  printf ("Parallel filter first took %lu seconds and %lu microseconds.  Filter length = %d\n", tresult.tv_sec, tresult.tv_usec, filter_len );
+  return dt;
+}
+
+double LUData1st ( int data_len, unsigned int* input_array, unsigned int* output_array, int filter_len, unsigned int* filter_list )
+{
+    /* Variables for timing */
+  struct timeval ta, tb, tresult;
+  double dt;
+
+  /* get initial time */
+  gettimeofday ( &ta, NULL );
+
+  /* for all elements in the data */
+  #pragma omp parallel for
+  for (int x=0; x<data_len; x+=4) {
+    for (int y=0; y<filter_len; y+=4) { 
+      if (input_array[x] == filter_list[y])
+        output_array[x] = input_array[x];
+      if (input_array[x] == filter_list[y+1])
+        output_array[x] = input_array[x];
+      if (input_array[x] == filter_list[y+2])
+        output_array[x] = input_array[x];
+      if (input_array[x] == filter_list[y+3])
+        output_array[x] = input_array[x];
+    }
+    for (int y=0; y<filter_len; y+=4) { 
+      if (input_array[x+1] == filter_list[y])
+        output_array[x+1] = input_array[x+1];
+      if (input_array[x+1] == filter_list[y+1])
+        output_array[x+1] = input_array[x+1];
+      if (input_array[x+1] == filter_list[y+2])
+        output_array[x+1] = input_array[x+1];
+      if (input_array[x+1] == filter_list[y+3])
+        output_array[x+1] = input_array[x+1];
+    }
+    for (int y=0; y<filter_len; y+=4) { 
+      if (input_array[x+2] == filter_list[y])
+        output_array[x+2] = input_array[x+2];
+      if (input_array[x+2] == filter_list[y+1])
+        output_array[x+2] = input_array[x+2];
+      if (input_array[x+2] == filter_list[y+2])
+        output_array[x+2] = input_array[x+2];
+      if (input_array[x+2] == filter_list[y+3])
+        output_array[x+2] = input_array[x+2];
+    }
+    for (int y=0; y<filter_len; y+=4) { 
+      if (input_array[x+3] == filter_list[y])
+        output_array[x+3] = input_array[x+3];
+      if (input_array[x+3] == filter_list[y+1])
+        output_array[x+3] = input_array[x+3];
+      if (input_array[x+3] == filter_list[y+2])
+        output_array[x+3] = input_array[x+3];
+      if (input_array[x+3] == filter_list[y+3])
+        output_array[x+3] = input_array[x+3];
+    }
+  }
+
+  /* get initial time */
+  gettimeofday ( &tb, NULL );
+
+  timeval_subtract ( &tresult, &tb, &ta );
+  dt = tresult.tv_sec + tresult.tv_usec / 1000000.0;  
+
+  printf ("Parallel data first took %lu seconds and %lu microseconds.  Filter length = %d\n", tresult.tv_sec, tresult.tv_usec, filter_len );
+  return dt;
+}
+
 
 void checkData ( unsigned int * serialarray, unsigned int * parallelarray )
 {
@@ -193,12 +447,18 @@ void checkData ( unsigned int * serialarray, unsigned int * parallelarray )
 }
 
 
+int file_exist (char *filename)
+{
+  struct stat   buffer;   
+  return (stat (filename, &buffer) == 0);
+}
+
 int main( int argc, char** argv )
 {
   /* loop variables */
   int x,y;
   double dt;
-  FILE *fp1, *fp2, *fp3, *fp4;
+  FILE *fp;
 
   /* Create matrixes */
   unsigned int * input_array;
@@ -227,61 +487,158 @@ int main( int argc, char** argv )
     filter_list[y] = y;
   }
 
-  /* open file for saving data */
-  fp1 = fopen("loop_efficiency.txt","w+");
-  fp2 = fopen("loop_parallel.txt","w+");
-  fprintf(fp1,"filter_len,\
-               data_1,data_1_norm,\
-               filter_1,filter_1_norm\n");
-  fprintf(fp2,"num_threads,\
-               pdata_1st,\
-               pfilter_1st\n");
+  /* Execute at a variety of filter lengths */
+  /* Loop Efficiency */
+  printf("Begin estimating loop efficiency, data saved in loop_efficiency.txt\n");
+  printf("\n");
+  if (file_exist ("loop_efficiency.txt"))
+    fp = fopen("loop_efficiency.txt","a+");
+  else {
+    fp = fopen("loop_efficiency.txt","w+");
+    fprintf(fp,"filter_len,data_1st,filter_1st\n");
+  }
 
-  // /* Execute at a variety of filter lengths */
-  // /* Loop Efficiency */
-  // for ( int filter_len =1; filter_len<=FILTER_LEN; filter_len*=2) 
-  // {
-  //   fprintf(fp1, "%d,", filter_len);
+  for ( int filter_len =1; filter_len<=FILTER_LEN; filter_len*=2) 
+  {
+    fprintf(fp, "%d,", filter_len);
 
-  //   dt = serialDataFirst ( DATA_LEN, input_array, serial_array, filter_len, filter_list );
-  //   fprintf(fp1, "%f,", dt);
-  //   fprintf(fp1, "%f,", dt / filter_len);
-  //   memset ( output_array, 0, DATA_LEN );
+    dt = serialDataFirst ( DATA_LEN, input_array, serial_array, filter_len, filter_list );
+    fprintf(fp, "%f,", dt);
+    memset ( output_array, 0, DATA_LEN );
 
-  //   dt = serialFilterFirst ( DATA_LEN, input_array, output_array, filter_len, filter_list );
-  //   checkData ( serial_array, output_array );
-  //   fprintf(fp1, "%f,", dt);
-  //   fprintf(fp1, "%f\n", dt / filter_len);
-  //   memset ( output_array, 0, DATA_LEN );
-  // }
+    dt = serialFilterFirst ( DATA_LEN, input_array, output_array, filter_len, filter_list );
+    checkData ( serial_array, output_array );
+    fprintf(fp, "%f\n", dt);
+    memset ( output_array, 0, DATA_LEN );
+  }
+  fclose(fp);
 
   /* Loop Parallelism */
-  int fs = 512;
+  int fs = 64;
+  printf("\n\n");
+  printf("Begin estimating loop parallelism, data saved in loop_parallel.txt\n");
+  printf("\n");
+
+  if (file_exist ("loop_parallel.txt"))
+    fp = fopen("loop_parallel.txt","a+");
+  else {
+    fp = fopen("loop_parallel.txt","w+");
+    fprintf(fp,"num_threads,filter_1st,data_1st\n");
+  }
+
+  memset ( serial_array, 0, DATA_LEN );
   serialDataFirst ( DATA_LEN, input_array, serial_array, fs, filter_list );
   for(int num_threads =1; num_threads<=16; num_threads*=2){
+    printf("Num Threads: %d\n",num_threads);
+
     omp_set_dynamic(0);
     omp_set_num_threads(num_threads);
 
-    fprintf(fp2,"%d,",num_threads);
+    fprintf(fp,"%d,",num_threads);
     
-    dt=0;
-    for(int it=0; it<5; it++){
-      dt += parallelFilterFirst ( DATA_LEN, input_array, output_array, fs, filter_list );
-      checkData ( serial_array, output_array );
-      memset ( output_array, 0, DATA_LEN );
-    }
-    fprintf(fp2,"%f,",dt/5);
+    dt = parallelFilterFirst ( DATA_LEN, input_array, output_array, fs, filter_list );
+    checkData ( serial_array, output_array );
+    memset ( output_array, 0, DATA_LEN );
+    fprintf(fp,"%f,",dt);
 
-    dt=0;
-    for(int it=0; it<5; it++){
-      dt += parallelDataFirst ( DATA_LEN, input_array, output_array, fs, filter_list );
-      checkData ( serial_array, output_array );
-      memset ( output_array, 0, DATA_LEN );
-    }
-    fprintf(fp2,"%f\n",dt/5);    
+    dt = parallelDataFirst ( DATA_LEN, input_array, output_array, fs, filter_list );
+    checkData ( serial_array, output_array );
+    memset ( output_array, 0, DATA_LEN );
+    fprintf(fp,"%f\n",dt);    
+  }
+  fclose(fp);
+
+  /* Optimized Version */
+  /* Loop unrolling */
+  /* Here we run the function only on 16 threads with filter size 512 */
+  printf("\n\n");
+  printf("Begin estimating Loop Unrolling efficiency, data saved in loop_unrolling.txt\n");
+  printf("\n");
+  printf("Unrolling:4, Threads:16\n");
+
+  if (file_exist ("loop_unrolling.txt"))
+    fp = fopen("loop_unrolling.txt","a+");
+  else {
+    fp = fopen("loop_unrolling.txt","w+");
+    fprintf(fp,"filter_1st,data_1st\n");
   }
 
-  fclose(fp1);
-  fclose(fp2);
+  memset ( serial_array, 0, DATA_LEN );
+  serialDataFirst ( DATA_LEN, input_array, serial_array, fs, filter_list );
+
+  omp_set_dynamic(0);
+  omp_set_num_threads(16);
+  
+  dt = LUFilter1st ( DATA_LEN, input_array, output_array, fs, filter_list );
+  checkData ( serial_array, output_array );
+  memset ( output_array, 0, DATA_LEN );
+  fprintf(fp,"%f,",dt);
+
+  dt = LUData1st ( DATA_LEN, input_array, output_array, fs, filter_list );
+  checkData ( serial_array, output_array );
+  memset ( output_array, 0, DATA_LEN );
+  fprintf(fp,"%f\n",dt);    
+  
+  fclose(fp);
+
+  /* Custom Scheduling */
+  /* dynamic scheduling */
+  printf("\n\n");
+  printf("Begin estimating Custom Scheduling efficiency, data saved in dynamic_schedul.txt\n");
+  printf("\n");
+  printf("Threads:16\n");
+
+  if (file_exist ("dynamic_schedul.txt"))
+    fp = fopen("dynamic_schedul.txt","a+");
+  else {
+    fp = fopen("dynamic_schedul.txt","w+");
+    fprintf(fp,"filter_1st,data_1st\n");
+  }
+
+  memset ( serial_array, 0, DATA_LEN );
+  serialDataFirst ( DATA_LEN, input_array, serial_array, fs, filter_list );
+  
+  dt = DynamicFilter1st ( DATA_LEN, input_array, output_array, fs, filter_list );
+  checkData ( serial_array, output_array );
+  memset ( output_array, 0, DATA_LEN );
+  fprintf(fp,"%f,",dt);
+
+  dt = DynamicData1st ( DATA_LEN, input_array, output_array, fs, filter_list );
+  checkData ( serial_array, output_array );
+  memset ( output_array, 0, DATA_LEN );
+  fprintf(fp,"%f\n",dt);    
+  
+  fclose(fp);
+
+  /* Static scheduling with block size 512*/
+  printf("\n\n");
+  printf("Begin estimating Custom Scheduling efficiency, data saved in static_schedul.txt\n");
+  printf("\n");
+  printf("Static schedule, block size: 512\n");
+
+  if (file_exist ("static_schedul.txt"))
+    fp = fopen("static_schedul.txt","a+");
+  else {
+    fp = fopen("static_schedul.txt","w+");
+    fprintf(fp,"filter_1st,data_1st\n");
+  }
+
+  memset ( serial_array, 0, DATA_LEN );
+  serialDataFirst ( DATA_LEN, input_array, serial_array, fs, filter_list );
+  
+  dt = StaticFilter1st ( DATA_LEN, input_array, output_array, fs, filter_list );
+  checkData ( serial_array, output_array );
+  memset ( output_array, 0, DATA_LEN );
+  fprintf(fp,"%f,",dt);
+
+  dt = StaticData1st ( DATA_LEN, input_array, output_array, fs, filter_list );
+  checkData ( serial_array, output_array );
+  memset ( output_array, 0, DATA_LEN );
+  fprintf(fp,"%f\n",dt);    
+  
+  fclose(fp);
+  
+  printf("\n\n");
+
 }
 
