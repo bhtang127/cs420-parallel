@@ -1,0 +1,134 @@
+---
+title: "CS420 Project1"
+author: "Bohao Tang"
+date: "February 20, 2018"
+output: 
+    pdf_document:
+        fig_caption: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(fig.pos = 'H')
+```
+
+```{r data, message=FALSE, warning=FALSE}
+library(tidyverse)
+
+le = read_csv("loop_efficiency.txt")
+lp = read_csv("loop_parallel.txt")
+lu = read_csv("loop_unrolling.txt")
+ds = read_csv("dynamic_schedul.txt")
+ss = read_csv("static_schedul.txt")
+```
+
+## Loop Efficiency
+
+a. Here is the plot of runtime vs filter size:
+
+```{r 1a, message=FALSE, warning=FALSE}
+data1a <- le %>% 
+    group_by(filter_len) %>%
+    summarize(SerialFilterFirst=median(filter_1st),SerialDataFirst=median(data_1st)) %>%
+    gather(Method, Median_Time, -filter_len)
+
+ggplot(data1a, aes(x=filter_len, y=Median_Time, colour=Method)) +
+    geom_line() +
+    ylab("Medain runtime (sec)") +
+    xlab("Filter length (1)") 
+```
+
+And here a log-log version plot of it:
+
+```{r 1a_log_log, message=FALSE, warning=FALSE}
+ggplot(data1a, aes(x=filter_len, y=Median_Time, colour=Method)) +
+    geom_line() +
+    ylab("Medain runtime (sec)") +
+    xlab("Filter length (1)") +
+    scale_x_continuous(trans='log2') +
+    scale_y_continuous(trans='log2')
+```
+
+We can see that when filter length bigger than 1, function `serialDataFirst` costs less time.
+
+b. In the implemented functions, total number of operations is approximatly `filter_length * data_length`. Since `data_length` doesn't change, we normalized the runtime by `filter_length / runtime`. Then here is the plot of normalized runtime vs filter length.
+
+```{r 1b, message=FALSE, warning=FALSE}
+data1b <- data1a %>% 
+    mutate(normtime = filter_len / Median_Time)
+
+ggplot(data1b, aes(x=filter_len, y=normtime, colour=Method)) +
+    geom_line() +
+    ylab("Normalized median runtime (ops/s)") +
+    xlab("Filter length (1)") 
+```
+
+And here is a log-log version plot:
+
+```{r 1b_log_log, message=FALSE, warning=FALSE}
+ggplot(data1b, aes(x=filter_len, y=normtime, colour=Method)) +
+    geom_line() +
+    ylab("Normalized median runtime (ops/s)") +
+    xlab("Filter length (1)") +
+    scale_x_continuous(trans='log2') +
+    scale_y_continuous(trans='log2')
+```
+
+We can see here that when `filter length` > 1, function `serialDataFirst` can run more operations per second.
+
+c. It is more efficient to have data in the outer loop. Because here `data length` is very big `512*512*256` and `filter length` is relative tiny at most `1024`. So it is likely that when you fix a filter element and scan the data, data can not be totally read into memory(cache) meanwhile the filter can when you fix a data point and scan the filter. That will cause a different i/o speed and then putting data out side will be faster.
+
+But when filter size is equal to 1, serialFilterFirst is faster. This is because of the loop overhead. When you put data outside you will keep jumping statment between inner and outer loop, and this will slow down the program.
+
+d. We divide time of `serialFilterFirst` by that of `serialDataFirst` to get the relative performance, and the log-log plot is like below.
+
+```{r 1d, message=FALSE, warning=FALSE}
+data1d <- le %>% 
+    mutate(rp = filter_1st / data_1st)
+
+ggplot(data1d, aes(x=filter_len, y=rp)) +
+    geom_line() +
+    ylab("Relative Performance") +
+    xlab("Filter length (1)") +
+    scale_x_continuous(trans='log2') +
+    scale_y_continuous(trans='log2')
+```
+
+
+## Loop Parallelism
+
+1. 
+a. See the code
+b. See the code
+
+2.
+a. Here is the plot for speed up.
+    
+```{r 22a, message=FALSE, warning=FALSE}
+data22a <- lp %>% 
+    group_by(num_threads) %>%
+    summarize(parallelFilterFirst=79.643385/median(filter_1st),parallelDataFirst=70.160775/median(data_1st)) %>%
+    gather(Method, Median_Speedup, -num_threads)
+
+ggplot(data22a, aes(x=num_threads, y=Median_Speedup, colour=Method)) +
+    geom_line() +
+    ylab("Medain Speedup") +
+    xlab("Number of Threads") +
+    scale_x_continuous(trans='log2') +
+    scale_y_continuous(trans='log2')
+```
+
+   
+b. The speedup increase approximatly linear before threads 4, slightly increase between 4 and 8, and tailed off after 8. This is strong scaling because the total problem size never change. This program is run on c5.2xlarge which has 8 cores, so ideally speedup curve will increase linearly up to 8 threads because it has 8 independent computing centers and then curve will be sharply tailed off.
+    
+3.
+a. For the absolute time, `parallelDataFirst` is still faster because the problem mentioned above(Loop Efficiency 1.c.) still holds. But as the plot above, `parallelFilterFirst` have a higher speedup, maybe this is because filter size is small and when you devide them you will reduce the jumps of statment more than deviding larger data. Or because that filter is small, so deviding them will make them able to be held in higher cache and therefore higher speed.  
+
+b. fff
+
+c. ggg
+
+## An Optimized Version
+
+a. ppp
+b. qqq
