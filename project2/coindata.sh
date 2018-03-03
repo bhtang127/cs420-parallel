@@ -3,7 +3,7 @@
 echo "num_threads total_fips heads elapsed" > $1;
 
 ITER=0
-while [ $ITER -lt 5 ]; do
+while [ $ITER -lt 20 ]; do
     let ITER=ITER+1;
     NUMTHREADS=1;
     while [ $NUMTHREADS -le $3 ]; do
