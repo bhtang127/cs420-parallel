@@ -1,0 +1,130 @@
+---
+title: <center> <h1>Project 2 Analysis Part</h1> </center>
+author: <center> <h3>Bohao Tang</h3> </center>
+date: <center> <h3>March 3, 2018</h3> </center>
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+### Introduction:
+You can fine the original data used here in `coindata.txt` in https://github.com/bhtang127/cs420-parallel/tree/master/project2 . I ran the code handed in 20 times and use the median of them to do the plot. The standard deviation for each data is small for about 1-2 ms.
+
+### Part 1: Parallel Coin Flipping
+
+#### 1. Factors Against Parallelism
+
+Below we have provided the source for a common implementation of the `next` method of the `Random` object. The next method is always used to generate random objects, regardless of type (float, int, bool, etc). The `nextInt` method, for example, calls `next` with a bit value of 32.
+
+```
+protected synchronized int next(int bits)
+{
+    seed = (seed * 0x5DEECE66DL + 0xBL) & ((1L << 48) - 1);
+    return (int) (seed >>> (48 - bits));
+}
+```
+
+Given the source code above, imagine that you created a single Random object shared across each of your threads.
+
+##### **a. What type of speedup (e.g. linear, sub-linear, constant) would you expect to see?**
+
+**Answer:** Constant speedup. 
+
+##### **b. What factor against parallelism does this demonstrate?**
+
+**Answer:** This is due to the interference effect. When you share the random generator with all threads, the `next` method should be an atomic step, therefore when one thread is getting its random number (therefore updating `seed`), the system should add lock to `seed` meanwhile blocking all other threads from getting their random numbers. So whatever the thread number is, the generator is actually generating numbers one by one and distributing them to each thread. Since all threads can do their job only after they get the next random number, there won't be any speedup.  
+
+
+#### 2. Scaling concepts (please clearly label all axes and include units and scale)
+
+##### **a. Produce (i) a speedup plot and (ii) characterize it in terms of linearity.**
+
+**Answer:** 
+(i). The speedup plot is:
+
+```{r sp, message=FALSE,warning=FALSE}
+library(tidyverse)
+coindata = read.table("coindata.txt", header = TRUE)
+
+data = coindata %>% 
+            group_by(num_threads) %>%
+            summarize(median_elapsed = mean(elapsed)) %>%
+            mutate(speedup = 10325.4 / median_elapsed)
+
+ggplot(data, aes(x=num_threads, y=speedup)) +
+    geom_point(colour="orangered",size=1.5) +
+    geom_line(colour="deepskyblue1") +
+    ylab("Medain Speedup [ms/ms]") +
+    xlab("Number of threads [1]") 
+```
+
+And here is a log-log version of plot:
+
+```{r sp2, message=FALSE,warning=FALSE}
+ggplot(data, aes(x=num_threads, y=speedup)) +
+    geom_point(colour="orangered",size=1.5) +
+    geom_line(colour="deepskyblue1") +
+    ylab("Medain Speedup [ms/ms]") +
+    xlab("Number of threads [1]") +
+    scale_x_continuous(trans='log2') +
+    scale_y_continuous(trans='log2')
+```
+
+(ii). We can see that the speedup curve seems very linear (a little sublinear) until thread_num = 16, and then suddenly tail off with no further increasement. This is because the server only have 16 vcpu therefore can not fully parallelize the program with 32 threads. Here is an estimated plot (light grey part) of curve for Amdahl's law (before thread_num 32), the estimated `p` is 0.9788:
+
+```{r al, message=FALSE, warning=FALSE}
+p = 0.9788
+x_al = seq(1,32,length=128)
+y_al = 1/(1 - p + p / x_al)
+data_al = data.frame(x_al = x_al, y_al=y_al)
+
+ggplot(data, aes(x=num_threads, y=speedup)) +
+    geom_point(colour="orangered",size=1.5) +
+    geom_line(colour="deepskyblue1") +
+    stat_function(fun = function(x) 1/(1-0.9788+0.9788/x), alpha=0.4) +
+    ylab("Medain Speedup [ms/ms]") +
+    xlab("Number of threads [1]") +
+    annotate("text",x=28,y=16,label="Amdahl's Law")
+```
+
+Therefore we can see the speedup curve is rather sublinear and follows Amdahl's law well before threads 32.
+
+##### **b. Produce a (i) parallel efficiency plot and (ii) characterize it in terms of linearity.**
+
+**Answer:**
+(i). The parallel efficiency plot is:
+
+```{r ep, message=FALSE,warning=FALSE}
+data_ef = data %>%
+            mutate(efficiency = speedup / num_threads * 100)
+
+ggplot(data_ef, aes(x=num_threads, y=efficiency)) +
+    geom_point(colour="orangered",size=1.5) +
+    geom_line(colour="deepskyblue1") +
+    ylab("Medain Efficiency [100%]") +
+    xlab("Number of threads [1]") 
+```
+
+
+(ii). The parallel efficiency curve seems like a linear decrease. We have shown in previous question that the data follows Amdahl's law with `p=0.9788` well when `num_threads < 32`. Since `p` is near 1, `num_threads * (1-p) / p` is small. Therefore we have that parallel efficiency:
+$$ \text{Efficiency} = \frac{100\%}{1-p + \frac{p}{n}} / n = \frac{100\%}{p} \frac{1}{1 + n \frac{1-p}{p}} \simeq \frac{100\%}{p} (1 - n \frac{1-p}{p}) $$
+Where `n` is the `num_threads`. Therefore the data will look like a linear decrease at least when `num_threads` < 32. Here is a plot of the data together with the estimated efficiency by Amdahl's law:
+
+```{r ep2, message=FALSE,warning=FALSE}
+data_ef = data %>%
+            mutate(efficiency = speedup / num_threads * 100)
+
+ggplot(data_ef, aes(x=num_threads, y=efficiency)) +
+    geom_point(colour="orangered",size=1.5) +
+    geom_line(colour="deepskyblue1") +
+    stat_function(fun = function(x) 100/((1-0.9788)*x+0.9788), alpha=0.4) +
+    annotate("text",x=28,y=70,label="Amdahl's Law") +
+    ylab("Medain Efficiency [100%]") +
+    xlab("Number of threads [1]") 
+```
+
+### Part 2: Brute Force a DES Key
+See the code 
+    
