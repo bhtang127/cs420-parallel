@@ -30,9 +30,9 @@ int mod( int x, int m ) {
   if ( x >= 0 )
     return x % m;
   else {
-    x += m;
-    if ( x >= 0 )
-      return x;
+    while ( x < 0 )
+      x += m;
+    return x;
   }
 }
 
