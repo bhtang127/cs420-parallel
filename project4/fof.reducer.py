@@ -3,28 +3,38 @@
 """An Simple Implement of Reducer in Streaming MapReduce for Friends Triangle"""
 
 import sys
-
-count_dict = {}
-
-for triple in sys.stdin:
    
-    ## Reducer is simply doing counting job
-    ## Since mapper have already out put all
-    ## possible legal triples of mutual friends suggest by each friends
-    ## If a triple appear more than once, 
-    ## then they are truly mutual friends and vice versa  
+## Reducer is simply doing counting job
+## Since mapper have already out put all
+## possible legal triples of mutual friends suggest by each friends
+## If a triple appear more than once, 
+## then they are truly mutual friends and vice versa  
+## Also, Since the output from mapper is sorted
+## Therefore we can do the count serially
 
-    # Remove the ending \n
-    triple = triple.strip()
+# Counting
+## Begin with first line
+line = sys.stdin.readline()
+current_triple = line
+current_count = 1
 
-    # Counting
-    if triple not in count_dict:
-        count_dict[triple] = 1
+## Loop for serial counting
+for next_triple in sys.stdin:
+
+    if next_triple == current_triple:
+        current_count += 1
+        current_triple = next_triple
+
     else:
-        count_dict[triple] += 1
+        if current_count > 1:
+            print( current_triple.strip() )
+        
+        current_triple = next_triple
+        current_count = 1
 
-## Output result, we output them in order
-for triple in sorted( count_dict.iterkeys() ):
-    if count_dict[triple] > 1:
-        print triple
-    
+## End with last line
+if current_count > 1:
+    print( current_triple.strip() )
+
+
+
