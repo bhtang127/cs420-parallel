@@ -180,7 +180,7 @@ int main ( int argc, char** argv ) {
 
   for ( iters = 0; iters < num_iterations; iters++ ) {
     // TODO: Add Code here or a function call to you MPI code
-    // Data patition
+    // Data patition and sending partition from 0 to other threads
     if ( num_procs > 1 ) {
       if ( ID == 0 ) {
         for ( int i = 0; i < width; i++) {
@@ -208,7 +208,7 @@ int main ( int argc, char** argv ) {
     }
 
     // Send necessary message from even nodes to odd and then odd to even
-    // Sending and recieving first rows
+    // Each local grid needs its prev and next row to update status
     if ( num_procs > 1 ) {
       if ( ID % 2 == 0 )
       {
