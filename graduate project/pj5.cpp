@@ -28,6 +28,7 @@
 #include <random>
 #include <iostream>
 #include <cassert>
+#include <fstream>
 
 using uint32 = unsigned int;
 
@@ -125,16 +126,16 @@ std::vector< std::set<uint32> > find_all_ancestors(std::vector<uint32> ids,
 
 
 // Duplication function
-std::vector<bool> PCR(uint32 target, uint32 cycles, 
+std::vector<uint32> PCR(uint32 target, uint32 cycles, 
                       uint32 bases_per_amplicon, double error_rate){
     // When you know a molecule should produce "target" duplications
     // in the procedure, you can use this functions to generate them 
-    // Return a vector of bool to indicate the mutation state of those
+    // Return a vector of uint32 to indicate the mutation state of those
     // duplications. 1 for mutated and 0 not
     // "cycles, bases_per_amplicon, error_rate" are just parameters
     // Warning: target here should > 0
 
-    std::vector<bool> retval(target);
+    std::vector<uint32> retval(target);
 
     // We do a simplified duplicate procedure
     // Actually this is not right
@@ -158,7 +159,7 @@ std::vector<bool> PCR(uint32 target, uint32 cycles,
 
     mutation = std::min(target, rd.Poisson(poisson_mean));
     for(uint32 i=0; i < mutation; i++){
-        retval[i] = true;
+        retval[i] = 1;
     }
     
     return retval;
@@ -166,12 +167,94 @@ std::vector<bool> PCR(uint32 target, uint32 cycles,
 
 
 // Main function
+void process(uint32 &len, std::vector<uint32> &molecules,
+             std::vector<uint32> &ids, std::vector<uint32> &ni,
+             uint32 cycles, uint32 bases_per_amplicon, uint32 error_rate,
+             int rank, int num_procs, uint32 n_well, uint32 K, uint32 S, int tag,
+             MPI_Status &stat){
+    std::vector<uint32> pcr_ret, idtag, ret_mole, ret_ids;
+    uint32 accum = 0;
+
+    if ( rank == 0 ) {
+        // processing duplication
+        std::cout<<"process: "<<rank<<" start processing"<<std::endl;
+        for ( int i=0; i < len; i++ ) {
+            if ( ni[i] == 0 ) continue;
+            else if ( molecules[i] ) {
+                pcr_ret = std::vector<uint32>( ni[i], 1 );
+            }
+            else {
+                pcr_ret = PCR(ni[i], cycles, bases_per_amplicon, error_rate);
+            }
+            idtag = std::vector<uint32>( ni[i], ids[i] );
+            ret_mole.insert(ret_mole.end(), pcr_ret.begin(), pcr_ret.end());
+            ret_ids.insert(ret_ids.end(), idtag.begin(), idtag.end());
+        } 
+
+        // Combine work for PCR round
+        molecules.clear();
+        ids.clear();
+        if ( tag == 1 ){
+            molecules.resize(n_well * K);
+            ids.resize(n_well * K);
+        }
+        else{
+            molecules.resize(S);
+            ids.resize(S);
+        }
+        
+        for ( int i=0; i < ret_mole.size(); i++ ) {
+            molecules[i] = ret_mole[i];
+            ids[i] = ret_ids[i];
+        }
+        accum = ret_mole.size();     
+        std::cout<<"process: "<<rank<<" combining work"<<std::endl;          
+        for ( int r=1; r < num_procs; r++ ) {
+            MPI_Recv ( &len, 1, MPI::UNSIGNED, r, 2, MPI_COMM_WORLD, &stat );            
+            MPI_Recv ( &molecules[accum], len, MPI::UNSIGNED, r, 2, MPI_COMM_WORLD, &stat );
+            MPI_Recv ( &ids[accum], len, MPI::UNSIGNED, r, 2, MPI_COMM_WORLD, &stat );
+            accum += len;
+        }
+    }
+    else {
+        // Reciving work
+        MPI_Recv ( &len, 1, MPI::UNSIGNED, 0, 2, MPI_COMM_WORLD, &stat );
+        molecules.resize(len);
+        ids.resize(len);
+        ni.resize(len);
+        MPI_Recv ( &molecules[0], len, MPI::UNSIGNED, 0, 2, MPI_COMM_WORLD, &stat );
+        MPI_Recv ( &ids[0], len, MPI::UNSIGNED, 0, 2, MPI_COMM_WORLD, &stat );
+        MPI_Recv ( &ni[0], len, MPI::UNSIGNED, 0, 2, MPI_COMM_WORLD, &stat );
+        
+        // Processing distributed work
+        std::cout<<"process: "<<rank<<" start processing"<<std::endl;
+        for ( int i=0; i < len; i++ ) {
+            if ( ni[i] == 0 ) continue;
+            else if ( molecules[i] ) {
+                pcr_ret = std::vector<uint32>( ni[i], 1 );
+            }
+            else {
+                pcr_ret = PCR(ni[i], cycles, bases_per_amplicon, error_rate);
+            }
+            idtag = std::vector<uint32>( ni[i], ids[i] );
+            ret_mole.insert(ret_mole.end(), pcr_ret.begin(), pcr_ret.end());
+            ret_ids.insert(ret_ids.end(), idtag.begin(), idtag.end());
+        } 
+
+        // Send Back
+        len = ret_mole.size();
+        MPI_Ssend ( &len, 1, MPI::UNSIGNED, 0, 2, MPI_COMM_WORLD );        
+        MPI_Ssend ( &ret_mole[0], ret_mole.size(), MPI::UNSIGNED, 0, 2, MPI_COMM_WORLD );
+        MPI_Ssend ( &ret_ids[0], ret_ids.size(), MPI::UNSIGNED, 0, 2, MPI_COMM_WORLD );
+    }
+}
 
 int main ( int argc, char** argv ) {
 
     // MPI Standard variable
     int num_procs;
     int rank, j;
+    std::ofstream data;
 
     // Parameters in the design
     // we only consider this unqiue situation
@@ -179,15 +262,15 @@ int main ( int argc, char** argv ) {
     uint32 cycle1 = 30, cycle2 = 15;
     uint32 K = 2e6, S = 1e8;
     uint32 bases_per_amplicon = 33;
-    double error_rate = 1e-6;
+    double error_rate = 1e-4;
 
     // Messaging variables
     MPI_Status stat;
     // necessary variables 
     uint32 len, accum;
-    std::vector<bool> molecules, ret_mole;
+    std::vector<uint32> molecules, ret_mole;
     std::vector<uint32> ids, ret_ids, ni;
-    std::vector<bool> pcr_ret;
+    std::vector<uint32> pcr_ret;
     std::vector<uint32> idtag;
     std::vector<uint32> mut_count(n_well), total_count(n_well), aux_count(n_well);
     std::vector<double> mutation_rate(n_well);
@@ -202,94 +285,41 @@ int main ( int argc, char** argv ) {
     MPI_Comm_rank ( MPI_COMM_WORLD, &rank );
 
     // First PCR round 
+
+    // distributing work
     if ( rank == 0 ) {
         // init status
         molecules.resize(n_molecule);
         ids.resize(n_molecule);
-        for ( int i=0; i < n_molecule; i++ ) {
-            ids[i] = i % 8;
-        }
+        ni.resize(n_molecule);
         std::vector<uint32> samples;
         for ( int i=0; i < n_well; i++ ) {
-            samples = Sample(K, n_molecule / n_well);
-            ni.insert(ni.end(), samples.begin(), samples.end());
+            samples = Sample(n_molecule/n_well, K);
+            for ( int j=0; j < n_molecule/n_well; j++ ) {
+                ni[i * n_molecule/n_well + j] = samples[j];
+                ids[i * n_molecule/n_well + j] = i;
+            }
         }
 
         len = n_molecule / num_procs;
         // distribute work to other process
         for ( int r=1; r < num_procs; r++ ) {
             MPI_Ssend ( &len, 1, MPI::UNSIGNED, r, 2, MPI_COMM_WORLD );            
-            MPI_Ssend ( &molecules[r * len], len, MPI::BOOL, r, 2, MPI_COMM_WORLD );
+            MPI_Ssend ( &molecules[r * len], len, MPI::UNSIGNED, r, 2, MPI_COMM_WORLD );
             MPI_Ssend ( &ids[r * len], len, MPI::UNSIGNED, r, 2, MPI_COMM_WORLD );
             MPI_Ssend ( &ni[r * len], len, MPI::UNSIGNED, r, 2, MPI_COMM_WORLD );                        
         }
-
-        // Processing distributed work
-        for ( int i=0; i < len; i++ ) {
-            if ( ni[i] == 0 ) continue;
-            else if ( molecules[i] ) {
-                pcr_ret = std::vector<bool>( ni[i], false );
-            }
-            else {
-                pcr_ret = PCR(ni[i], cycle1, bases_per_amplicon, error_rate);
-            }
-            idtag = std::vector<uint32>( ni[i], ids[i] );
-            ret_mole.insert(ret_mole.end(), pcr_ret.start(), pcr_ret.end());
-            ret_ids.insert(ret_ids.end(), idtag.start(), idtag.end());
-        } 
-
-        // Combine work for first PCR round
-        molecules.clear();
-        molecules.resize(n_well * K);
-        ids.clear();
-        ids.resize(n_well * K);
-        for ( int i=0; i < len; i++ ) {
-            molecules[i] = ret_mole[i];
-            ids[i] = ret_ids[i];
-        }
-        accum = len;
-
-        for ( int r=1; r < num_procs; r++ ) {
-            MPI_Recv ( &len, 1, MPI::UNSIGNED, r, 2, MPI_COMM_WORLD, &stat );            
-            MPI_Recv ( &molecules[accum], len, MPI::BOOL, r, 2, MPI_COMM_WORLD, &stat );
-            MPI_Recv ( &ids[accum], len, MPI::UNSIGNED, r, 2, MPI_COMM_WORLD, &stat );
-            accum += len;
-        }
     }
-    else {
-        // Reciving work
-        MPI_Recv ( &len, 1, MPI::UNSIGNED, 0, 2, MPI_COMM_WORLD, &stat );
-        molecules.resize(len);
-        ids.resize(len);
-        ni.resize(len);
-        MPI_Recv ( &molecules[0], len, MPI::BOOL, 0, 2, MPI_COMM_WORLD, &stat );
-        MPI_Recv ( &ids[0], len, MPI::UNSIGNED, 0, 2, MPI_COMM_WORLD, &stat );
-        MPI_Recv ( &ni[0], len, MPI::UNSIGNED, 0, 2, MPI_COMM_WORLD, &stat );
-        
-        // Processing distributed work
-        for ( int i=0; i < len; i++ ) {
-            if ( ni[i] == 0 ) continue;
-            else if ( molecules[i] ) {
-                pcr_ret = std::vector<bool>( ni[i], false );
-            }
-            else {
-                pcr_ret = PCR(ni[i], cycle1, bases_per_amplicon, error_rate);
-            }
-            idtag = std::vector<uint32>( ni[i], ids[i] );
-            ret_mole.insert(ret_mole.end(), pcr_ret.start(), pcr_ret.end());
-            ret_ids.insert(ret_ids.end(), idtag.start(), idtag.end());
-        } 
 
-        // Send Back
-        len = ret_mole.size();
-        MPI_Ssend ( &len, 1, MPI::UNSIGNED, 0, 2, MPI_COMM_WORLD );        
-        MPI_Ssend ( &ret_mole[0], ret_mole.size(), MPI::BOOL, 0, 2, MPI_COMM_WORLD );
-        MPI_Ssend ( &ret_ids[0], ret_ids.size(), MPI::UNSIGNED, 0, 2, MPI_COMM_WORLD );
-    }
+    // Processing work
+    process(len, molecules, ids, ni, cycle1, bases_per_amplicon, error_rate,
+            rank, num_procs, n_well, K, S, 1, stat);
 
     MPI_Barrier(MPI_COMM_WORLD);
 
     // Second PCR round
+
+    // distributing work
     if ( rank == 0 ) {
         // sample to compute work to do
         ni = Sample(K * n_well, S);
@@ -298,77 +328,15 @@ int main ( int argc, char** argv ) {
         // distributing work to other process
         for ( int r=1; r < num_procs; r++ ) {
             MPI_Ssend ( &len, 1, MPI::UNSIGNED, r, 2, MPI_COMM_WORLD );            
-            MPI_Ssend ( &molecules[r * len], len, MPI::BOOL, r, 2, MPI_COMM_WORLD );
+            MPI_Ssend ( &molecules[r * len], len, MPI::UNSIGNED, r, 2, MPI_COMM_WORLD );
             MPI_Ssend ( &ids[r * len], len, MPI::UNSIGNED, r, 2, MPI_COMM_WORLD );
             MPI_Ssend ( &ni[r * len], len, MPI::UNSIGNED, r, 2, MPI_COMM_WORLD );                        
         }
-
-        // Processing distributed work
-        ret_mole.clear();
-        ret_ids.clear();
-        for ( int i=0; i < len; i++ ) {
-            if ( ni[i] == 0 ) continue;
-            else if ( molecules[i] ) {
-                pcr_ret = std::vector<bool>( ni[i], false );
-            }
-            else {
-                pcr_ret = PCR(ni[i], cycle1, bases_per_amplicon, error_rate);
-            }
-            idtag = std::vector<uint32>( ni[i], ids[i] );
-            ret_mole.insert(ret_mole.end(), pcr_ret.start(), pcr_ret.end());
-            ret_ids.insert(ret_ids.end(), idtag.start(), idtag.end());
-        } 
-
-        // Combine work for first PCR round
-        molecules.clear();
-        molecules.resize(S);
-        ids.clear();
-        ids.resize(S);
-        for ( int i=0; i < len; i++ ) {
-            molecules[i] = ret_mole[i];
-            ids[i] = ret_ids[i];
-        }
-        accum = len;
-
-        for ( int r=1; r < num_procs; r++ ) {
-            MPI_Recv ( &len, 1, MPI::UNSIGNED, r, 2, MPI_COMM_WORLD, &stat );            
-            MPI_Recv ( &molecules[accum], len, MPI::BOOL, r, 2, MPI_COMM_WORLD, &stat );
-            MPI_Recv ( &ids[accum], len, MPI::UNSIGNED, r, 2, MPI_COMM_WORLD, &stat );
-            accum += len;
-        }
     }
-    else {
-        // Reciving work
-        MPI_Recv ( &len, 1, MPI::UNSIGNED, 0, 2, MPI_COMM_WORLD, &stat );
-        molecules.clear(); molecules.resize(len);
-        ids.clear(); ids.resize(len);
-        ni.clear(); ni.resize(len);
-        MPI_Recv ( &molecules[0], len, MPI::BOOL, 0, 2, MPI_COMM_WORLD, &stat );
-        MPI_Recv ( &ids[0], len, MPI::UNSIGNED, 0, 2, MPI_COMM_WORLD, &stat );
-        MPI_Recv ( &ni[0], len, MPI::UNSIGNED, 0, 2, MPI_COMM_WORLD, &stat );
-        
-        // Processing distributed work
-        ret_mole.clear();
-        ret_ids.clear();
-        for ( int i=0; i < len; i++ ) {
-            if ( ni[i] == 0 ) continue;
-            else if ( molecules[i] ) {
-                pcr_ret = std::vector<bool>( ni[i], false );
-            }
-            else {
-                pcr_ret = PCR(ni[i], cycle1, bases_per_amplicon, error_rate);
-            }
-            idtag = std::vector<uint32>( ni[i], ids[i] );
-            ret_mole.insert(ret_mole.end(), pcr_ret.start(), pcr_ret.end());
-            ret_ids.insert(ret_ids.end(), idtag.start(), idtag.end());
-        } 
 
-        // Send Back
-        len = ret_mole.size();
-        MPI_Ssend ( &len, 1, MPI::UNSIGNED, 0, 2, MPI_COMM_WORLD );        
-        MPI_Ssend ( &ret_mole[0], ret_mole.size(), MPI::BOOL, 0, 2, MPI_COMM_WORLD );
-        MPI_Ssend ( &ret_ids[0], ret_ids.size(), MPI::UNSIGNED, 0, 2, MPI_COMM_WORLD );
-    }
+    // processing work
+    process(len, molecules, ids, ni, cycle2, bases_per_amplicon, error_rate,
+            rank, num_procs, n_well, K, S, 2, stat);
 
     MPI_Barrier(MPI_COMM_WORLD);
 
@@ -378,7 +346,7 @@ int main ( int argc, char** argv ) {
         // Distribute work
         for ( int r=1; r < num_procs; r++ ) {
             MPI_Ssend ( &len, 1, MPI::UNSIGNED, r, 2, MPI_COMM_WORLD );            
-            MPI_Ssend ( &molecules[r * len], len, MPI::BOOL, r, 2, MPI_COMM_WORLD );
+            MPI_Ssend ( &molecules[r * len], len, MPI::UNSIGNED, r, 2, MPI_COMM_WORLD );
             MPI_Ssend ( &ids[r * len], len, MPI::UNSIGNED, r, 2, MPI_COMM_WORLD );                    
         }
 
@@ -392,24 +360,24 @@ int main ( int argc, char** argv ) {
         for ( int r=1; r < num_procs; r++ ) {
             MPI_Recv ( &aux_count[0], n_well, MPI::UNSIGNED, r, 2, MPI_COMM_WORLD, &stat );
             for ( int i=0; i < n_well; i++) 
-                total_count[i] += aux_count[i];
+                mut_count[i] += aux_count[i];
             MPI_Recv ( &aux_count[0], n_well, MPI::UNSIGNED, r, 2, MPI_COMM_WORLD, &stat );
             for ( int i=0; i < n_well; i++) 
-                mut_count[i] += aux_count[i];
+                total_count[i] += aux_count[i];
         }
 
         // Compute mutation rate each well
-        for ( int i=0; i < n_well; i++) 
+        for ( int i=0; i < n_well; i++){ 
             mutation_rate[i] = (double) mut_count[i] / total_count[i];
-            std::cout<<mutation_rate[i]<<" ";
-        std::cout<<std::endl;
+            std::cout<<mut_count[i]<<" "<<total_count[i]<<std::endl;
+        }
     }
     else {
         // Reciving work
         MPI_Recv ( &len, 1, MPI::UNSIGNED, 0, 2, MPI_COMM_WORLD, &stat );
         molecules.clear(); molecules.resize(len);
         ids.clear(); ids.resize(len);
-        MPI_Recv ( &molecules[0], len, MPI::BOOL, 0, 2, MPI_COMM_WORLD, &stat );
+        MPI_Recv ( &molecules[0], len, MPI::UNSIGNED, 0, 2, MPI_COMM_WORLD, &stat );
         MPI_Recv ( &ids[0], len, MPI::UNSIGNED, 0, 2, MPI_COMM_WORLD, &stat );
         
         // Processing distributed work
@@ -424,6 +392,5 @@ int main ( int argc, char** argv ) {
     }
 
     MPI_Finalize(); // finalize so I can exit
+    return 0;
 }
-
-
