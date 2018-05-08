@@ -1,33 +1,6 @@
-/*  To Do:
-    Use the function below to finish pure MPI(therrefore sequential) version of the project.
-    Input: Length N vector with value {0,1} to indicate the original mutation state for molecules
-    Procedure:
-        1. Divide N molecule to M wells randomly but evenly
-        2. For each well, say well i has ni molecules, then use function "sample" to calculate how many
-           duplications should each molecule produce. And use function "PCR" to generate those molecules 
-        3. Combine all wells, then you should get K*M molecules in total, then use function "sample" again
-           to compute #duplications each molecule should produce. Then use function "PCR" to generate 
-           those molecules. Now you should have S molecules, each should have tag for well it comes from 
-           and if it is mutated (mutation state will be generate in function "PCR" but well id should be 
-           attached by your own)
-        4. Calculate the mutation rate --the ratio of mutated molecules and total molecules after step 3
-    Output: Double type mutation rate
-    Comments: We will do a 8 wells case, so you shouldn't parallel just at well level if num of threads
-              is greater than 8 (go a little further to molecule level) 
-              Also, the code below should add --std=c++11 to compile
-
-    Waring: if a molecule is mutated before PCR, then it can only produce mutated molecule during PCR. 
-            the result of PCR function actually only have meaning when the molecule is not mutated before.  
-*/
-
+#include "pre_sequencing.h"
 #include "mpi.h"
-#include <cmath>
-#include <vector>
-#include <set>
-#include <algorithm>
-#include <random>
 #include <iostream>
-#include <cassert>
 #include <time.h>
 
 using uint32 = unsigned int;
@@ -255,11 +228,11 @@ int main ( int argc, char** argv ) {
 
     // Parameters in the design
     // we only consider this unqiue situation
-    uint32 n_well = 8, n_molecule = 10000;
+    uint32 n_well = 8, n_molecule = 20000;
     uint32 cycle1 = 30, cycle2 = 15;
-    uint32 K = 2e6, S = 1e8;
+    uint32 K = 4e6, S = 2e8;
     uint32 bases_per_amplicon = 33;
-    double error_rate = 1e-4;
+    double error_rate = 1e-6;
 
     // Messaging variables
     MPI_Status stat;
