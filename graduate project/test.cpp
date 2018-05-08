@@ -1,6 +1,5 @@
 #include "pre_sequencing.h"
 #include "mpi.h"
-#include "omp.h"
 #include <iostream>
 #include <time.h>
 
@@ -14,12 +13,8 @@ void process(uint32 &len, std::vector<uint32> &molecules,
     std::vector<uint32> pcr_ret, idtag, ret_mole, ret_ids;
     uint32 accum = 0;
 
-    #pragma omp declare reduction(vec_insert : std::vector<uint32> : \
-                              omp_out.insert(omp_out.end(), omp_in.begin(), omp_in.end())) \
-
     if ( rank == 0 ) {
         // processing duplication
-        #pragma omp parallel for private(pcr_ret, idtag) reduction(vec_insert:ret_mole,ret_ids)
         for ( int i=0; i < len; i++ ) {
             if ( ni[i] == 0 ) continue;
             else if ( molecules[i] ) {
@@ -45,7 +40,6 @@ void process(uint32 &len, std::vector<uint32> &molecules,
             ids.resize(S);
         }
         
-        #pragma omp parallel for
         for ( int i=0; i < ret_mole.size(); i++ ) {
             molecules[i] = ret_mole[i];
             ids[i] = ret_ids[i];
@@ -69,7 +63,6 @@ void process(uint32 &len, std::vector<uint32> &molecules,
         MPI_Recv ( &ni[0], len, MPI::UNSIGNED, 0, 2, MPI_COMM_WORLD, &stat );
         
         // Processing distributed work
-        #pragma omp parallel for private(pcr_ret, idtag) reduction(vec_insert:ret_mole,ret_ids)      
         for ( int i=0; i < len; i++ ) {
             if ( ni[i] == 0 ) continue;
             else if ( molecules[i] ) {
@@ -97,7 +90,6 @@ int main ( int argc, char** argv ) {
     int num_procs;
     int rank, j;
     clock_t t;
-    int total_threads;
 
     // Parameters in the design
     // we only consider this unqiue situation
@@ -127,22 +119,16 @@ int main ( int argc, char** argv ) {
     MPI_Comm_size ( MPI_COMM_WORLD, &num_procs ); // Set the num_procs
     MPI_Comm_rank ( MPI_COMM_WORLD, &rank );
 
-    // parameter for openmp
-    total_threads = atoi(argv[1]);
-    omp_set_dynamic(0);
-    omp_set_num_threads(total_threads / num_procs);
-
     // First PCR round 
 
     // distributing work
     if ( rank == 0 ) {
-        t = clock(); 
+        t = clock();
         // init status
         molecules.resize(n_molecule);
         ids.resize(n_molecule);
         ni.resize(n_molecule);
         std::vector<uint32> samples;
-        #pragma omp parallel for
         for ( int i=0; i < n_well; i++ ) {
             samples = Sample(n_molecule/n_well, K);
             for ( int j=0; j < n_molecule/n_well; j++ ) {
@@ -191,10 +177,6 @@ int main ( int argc, char** argv ) {
     MPI_Barrier(MPI_COMM_WORLD);
 
     // Accumulating mutation rate
-    #pragma omp declare reduction(vec_uint_plus : std::vector<uint32> : \
-                              std::transform(omp_out.begin(), omp_out.end(), omp_in.begin(), omp_out.begin(), std::plus<uint32>())) \
-                    initializer(omp_priv = omp_orig)
-
     if ( rank == 0 ) {
         len = S / num_procs;
         // Distribute work
@@ -205,7 +187,6 @@ int main ( int argc, char** argv ) {
         }
 
         // Processing distributed work
-        #pragma omp parallel for reduction(vec_uint_plus:total_count,mut_count)
         for ( int i=0; i < len; i++ ) {
             total_count[ ids[i] ] ++;
             if ( molecules[i] ) mut_count[ ids[i] ] ++;
@@ -222,12 +203,11 @@ int main ( int argc, char** argv ) {
         }
 
         // Compute mutation rate each well
-        #pragma omp parallel for
         for ( int i=0; i < n_well; i++){ 
             mutation_rate[i] = (double) mut_count[i] / total_count[i];
         }
         t = clock() - t;
-        std::cout<<"processing time: "<<t<<std::endl;
+        std::cout<<"processing time: "<<t<<std::endl;        
     }
     else {
         // Reciving work
@@ -238,7 +218,6 @@ int main ( int argc, char** argv ) {
         MPI_Recv ( &ids[0], len, MPI::UNSIGNED, 0, 2, MPI_COMM_WORLD, &stat );
         
         // Processing distributed work
-        #pragma omp parallel for reduction(vec_uint_plus:total_count,mut_count)
         for ( int i=0; i < len; i++ ) {
             total_count[ ids[i] ] ++;
             if ( molecules[i] ) mut_count[ ids[i] ] ++;
