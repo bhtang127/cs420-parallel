@@ -19,7 +19,7 @@ void process(uint32 &len, std::vector<uint32> &molecules,
 
     if ( rank == 0 ) {
         // processing duplication
-        #pragma omp parallel for private(pcr_ret, idtag) reduction(vec_insert:ret_mole,ret_ids)
+        #pragma omp parallel for private(pcr_ret, idtag)
         for ( int i=0; i < len; i++ ) {
             if ( ni[i] == 0 ) continue;
             else if ( molecules[i] ) {
@@ -69,7 +69,7 @@ void process(uint32 &len, std::vector<uint32> &molecules,
         MPI_Recv ( &ni[0], len, MPI::UNSIGNED, 0, 2, MPI_COMM_WORLD, &stat );
         
         // Processing distributed work
-        #pragma omp parallel for private(pcr_ret, idtag) reduction(vec_insert:ret_mole,ret_ids)      
+        #pragma omp parallel for private(pcr_ret, idtag)      
         for ( int i=0; i < len; i++ ) {
             if ( ni[i] == 0 ) continue;
             else if ( molecules[i] ) {
@@ -205,7 +205,7 @@ int main ( int argc, char** argv ) {
         }
 
         // Processing distributed work
-        #pragma omp parallel for reduction(vec_uint_plus:total_count,mut_count)
+        #pragma omp parallel for 
         for ( int i=0; i < len; i++ ) {
             total_count[ ids[i] ] ++;
             if ( molecules[i] ) mut_count[ ids[i] ] ++;
@@ -238,7 +238,7 @@ int main ( int argc, char** argv ) {
         MPI_Recv ( &ids[0], len, MPI::UNSIGNED, 0, 2, MPI_COMM_WORLD, &stat );
         
         // Processing distributed work
-        #pragma omp parallel for reduction(vec_uint_plus:total_count,mut_count)
+        #pragma omp parallel for 
         for ( int i=0; i < len; i++ ) {
             total_count[ ids[i] ] ++;
             if ( molecules[i] ) mut_count[ ids[i] ] ++;
