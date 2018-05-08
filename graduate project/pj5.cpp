@@ -28,7 +28,7 @@
 #include <random>
 #include <iostream>
 #include <cassert>
-#include <fstream>
+#include <time.h>
 
 using uint32 = unsigned int;
 
@@ -177,7 +177,6 @@ void process(uint32 &len, std::vector<uint32> &molecules,
 
     if ( rank == 0 ) {
         // processing duplication
-        std::cout<<"process: "<<rank<<" start processing"<<std::endl;
         for ( int i=0; i < len; i++ ) {
             if ( ni[i] == 0 ) continue;
             else if ( molecules[i] ) {
@@ -208,7 +207,6 @@ void process(uint32 &len, std::vector<uint32> &molecules,
             ids[i] = ret_ids[i];
         }
         accum = ret_mole.size();     
-        std::cout<<"process: "<<rank<<" combining work"<<std::endl;          
         for ( int r=1; r < num_procs; r++ ) {
             MPI_Recv ( &len, 1, MPI::UNSIGNED, r, 2, MPI_COMM_WORLD, &stat );            
             MPI_Recv ( &molecules[accum], len, MPI::UNSIGNED, r, 2, MPI_COMM_WORLD, &stat );
@@ -227,7 +225,6 @@ void process(uint32 &len, std::vector<uint32> &molecules,
         MPI_Recv ( &ni[0], len, MPI::UNSIGNED, 0, 2, MPI_COMM_WORLD, &stat );
         
         // Processing distributed work
-        std::cout<<"process: "<<rank<<" start processing"<<std::endl;
         for ( int i=0; i < len; i++ ) {
             if ( ni[i] == 0 ) continue;
             else if ( molecules[i] ) {
@@ -254,7 +251,7 @@ int main ( int argc, char** argv ) {
     // MPI Standard variable
     int num_procs;
     int rank, j;
-    std::ofstream data;
+    std::clock_t t;
 
     // Parameters in the design
     // we only consider this unqiue situation
@@ -288,6 +285,7 @@ int main ( int argc, char** argv ) {
 
     // distributing work
     if ( rank == 0 ) {
+        t = std::clock();
         // init status
         molecules.resize(n_molecule);
         ids.resize(n_molecule);
@@ -369,8 +367,9 @@ int main ( int argc, char** argv ) {
         // Compute mutation rate each well
         for ( int i=0; i < n_well; i++){ 
             mutation_rate[i] = (double) mut_count[i] / total_count[i];
-            std::cout<<mut_count[i]<<" "<<total_count[i]<<std::endl;
         }
+        t = std::clock() - t;
+        std::cout<<"processing time: "<<t<<std::endl;        
     }
     else {
         // Reciving work
