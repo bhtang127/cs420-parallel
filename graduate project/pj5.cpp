@@ -93,9 +93,9 @@ int main ( int argc, char** argv ) {
 
     // Parameters in the design
     // we only consider this unqiue situation
-    uint32 n_well = 8, n_molecule = 20000;
+    uint32 n_well = 8, n_molecule = 10000;
     uint32 cycle1 = 30, cycle2 = 15;
-    uint32 K = 4e6, S = 2e8;
+    uint32 K = 2e6, S = 1e8;
     uint32 bases_per_amplicon = 33;
     double error_rate = 1e-6;
 
