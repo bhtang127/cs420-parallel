@@ -2,7 +2,7 @@
 #include "mpi.h"
 #include "omp.h"
 #include <iostream>
-#include <time.h>
+#include <sys/time.h>
 
 
 // Main function
@@ -103,7 +103,8 @@ int main ( int argc, char** argv ) {
     // MPI Standard variable
     int num_procs;
     int rank, j;
-    clock_t t;
+    struct timeval start, end;
+    double delta;
     int total_threads;
 
     // Parameters in the design
@@ -143,7 +144,8 @@ int main ( int argc, char** argv ) {
 
     // distributing work
     if ( rank == 0 ) {
-        t = clock(); 
+        gettimeofday(&start, NULL);
+
         // init status
         molecules.resize(n_molecule);
         ids.resize(n_molecule);
@@ -229,8 +231,11 @@ int main ( int argc, char** argv ) {
         for ( int i=0; i < n_well; i++){ 
             mutation_rate[i] = (double) mut_count[i] / total_count[i];
         }
-        t = clock() - t;
-        std::cout<<"processing time: "<<t<<std::endl;
+        gettimeofday(&end, NULL);
+        delta = ((end.tv_sec  - start.tv_sec) * 1000000u + 
+                  end.tv_usec - start.tv_usec) / 1.e6;
+
+        std::cout<<"processing time: "<<delta<<std::endl;
     }
     else {
         // Reciving work
