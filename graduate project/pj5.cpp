@@ -251,7 +251,7 @@ int main ( int argc, char** argv ) {
     // MPI Standard variable
     int num_procs;
     int rank, j;
-    std::clock_t t;
+    clock_t t;
 
     // Parameters in the design
     // we only consider this unqiue situation
@@ -285,7 +285,7 @@ int main ( int argc, char** argv ) {
 
     // distributing work
     if ( rank == 0 ) {
-        t = std::clock();
+        t = clock();
         // init status
         molecules.resize(n_molecule);
         ids.resize(n_molecule);
@@ -368,7 +368,7 @@ int main ( int argc, char** argv ) {
         for ( int i=0; i < n_well; i++){ 
             mutation_rate[i] = (double) mut_count[i] / total_count[i];
         }
-        t = std::clock() - t;
+        t = clock() - t;
         std::cout<<"processing time: "<<t<<std::endl;        
     }
     else {
